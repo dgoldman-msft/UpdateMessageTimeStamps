@@ -37,14 +37,20 @@ function Update-MessageTimeStamps {
         Enable or disable EWS debug tracing
 
     .EXAMPLE
-        Update-MessageTimeStamps -ClientID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxx -TenantName YourTenant@onmicrosoft.com
+       Update-MessageTimeStamps -ClientID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxx -UserImpersonation -TargetDomain YourTenant.onmicrosoft.com -TenantName YourTenant.onmicrosoft.com -TargetMailbox UserMailbox@YourTenant.onmicrosoft.com
 
-        This will log on to the tenant and just report the messages in the mailbox
+        This will log on to the specified tenant using impersonation to a target mailbox and just report the messages in the mailbox
 
-        Update-MessageTimeStamps -ClientID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxx -TenantName YourTenant@onmicrosoft.com -ChangingMessageStamps
+    .EXAMPLE
+        Update-MessageTimeStamps -ClientID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxx -UserImpersonation -TargetDomain YourTenant.onmicrosoft.com -TenantName YourTenant.onmicrosoft.com -TargetMailbox UserMailbox@YourTenant.onmicrosoft.com -ChangingMessageStamps
 
-        This will log on to the tenant, connect to the mailbox and change all the time stamps on a message (CreataionTime, SubmissionsTime, DeliveryTime and LastModificationTime)
+        This will log on to the specified tenant using impersonation to a target mailbox and just report the messages in the mailbox and change all the time stamps on a message (CreataionTime, SubmissionsTime, DeliveryTime and LastModificationTime)
     
+    .EXAMPLE
+        Update-MessageTimeStamps -ClientID xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxx -TargetDomain YourTenant.onmicrosoft.com -TenantName YourTenant.onmicrosoft.com -TargetMailbox UserMailbox@YourTenant.onmicrosoft.com
+        
+        This will log on to the specified tenant using not using impersonation and log in to the mailbox that the OAUTh token was generated for.
+
     .NOTES
         Download - https://www.microsoft.com/en-us/download/confirmation.aspx?id=42951
         # Configuration Impresonation - https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-configure-impersonation?redirectedfrom=MSDN
@@ -53,7 +59,7 @@ function Update-MessageTimeStamps {
 
     [cmdletbinding(DefaultParameterSetName = 'LoginInfo')]
     param(
-        [Parameter(ParameterSetName = "LoginInfo")]
+        [Parameter(Position = 0, ParameterSetName = "LoginInfo")]
         [string]
         $ClientId = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 
@@ -61,15 +67,15 @@ function Update-MessageTimeStamps {
         [string]
         $script:oauthRequestedirectUri = "https://login.microsoftonline.com/common/oauth2/nativeclient",
 
-        [Parameter(ParameterSetName = "LoginInfo")]
+        [Parameter(Position = 1, ParameterSetName = "LoginInfo")]
         [string]
         $TargetDomain = 'tenant.onmicrosoft.com',
 
-        [Parameter(ParameterSetName = "LoginInfo")]
+        [Parameter(Position = 2, ParameterSetName = "LoginInfo")]
         [string]
         $TenantName = "tenant.onmicrosoft.com",
 
-        [Parameter(Mandatory = $true, ParameterSetName = "UserImpersonation")]
+        [Parameter(Position = 3, ParameterSetName = "LoginInfo")]
         [string]
         $TargetMailbox = 'user@tenant.onmicrosoft.com',
         
@@ -78,21 +84,18 @@ function Update-MessageTimeStamps {
         [Object]
         $ExchangeVersion = "Exchange2013_SP1",
 
-        [Parameter(Position = 2, Mandatory = $true, ParameterSetName = "MessageModifications")]
+        [Parameter(ParameterSetName = "MessageModifications")]
         [Int]
         $MaxItems = 100,
 
-        [Parameter(Position = 1, Mandatory = $true, ParameterSetName = "MessageModifications")]
+        [Parameter(ParameterSetName = "MessageModifications")]
         [ValidateRange(1, 60)]
         [Int32]
         $Seconds = "15",
 
-        [Parameter(ParameterSetName = "UserImpersonation")]
-        [Parameter(Position = 0, ParameterSetName = "MessageModifications")]
         [switch]
         $ChangeMessageStamps,
 
-        [Parameter(Position = 0, ParameterSetName = "UserImpersonation")]
         [switch]
         $UserImpersonation,
 
@@ -111,29 +114,34 @@ function Update-MessageTimeStamps {
         $url = "https://www.microsoft.com/en-us/download/confirmation.aspx?id=42951"
 
         #Get Token for EWS
-        Write-Host -ForegroundColor Yellow "Checking for the MSAL.PS module found!"
+        Write-Host -ForegroundColor Yellow "Checking for presence of the MSAL.PS module"
         if (Get-Module -Name MSAL.PS -ListAvailable) {
             Import-Module -Name MSAL.PS 
-            Write-Host -ForegroundColor Green "Module found and imported"
+            Write-Host -ForegroundColor Green "Module found and imported!"
         }
         else {
             Write-Host -ForegroundColor Yellow "MSAL.PS module not found! Installing and importing module"
             Install-module -Name MSAL.PS -Force -AllowClobber -Scope AllUsers -Repository PSGallery -AcceptLicense
             Import-Module -Name MSAL.PS 
-            Write-Host -ForegroundColor Yellow "Installation and importing complete!"
+            Write-Host -ForegroundColor Yellow "Installation and importing module complete!"
         }
 
-        Write-Host -ForegroundColor Green "Logging on to $($TenantName) and getting an authentication token from a token server"
-        $authority = "https://login.microsoftonline.com/$TenantName"
-        $scopes = "EWS.AccessAsUser.All"
+        if ($TenantName -eq 'tenant.onmicrosoft.com') {
+            Write-Host -ForegroundColor Red "No valid tenant specified. Unable to obtain OAUTH token. Domain name must be in the correct format of tenant.onmicrosoft.com. Exiting"
+            return
+        }
+        else {
+            Write-Host -ForegroundColor Green "Logging on to $($TenantName) and getting an authentication token from a token server"
+            $authority = "https://login.microsoftonline.com/$TenantName"
+            $scopes = "EWS.AccessAsUser.All"
         
-        $msalProperties = @{
-            Clientid    = $clientid
-            TenantName  = $TenantName
-            RedirectUri = $script:oauthRequestedirectUri
-            Authority   = $authority
-            Interactive = $True
-            Scopes      = $scopes
+            $msalProperties = @{
+                Clientid    = $clientid
+                RedirectUri = $script:oauthRequestedirectUri
+                Authority   = $authority
+                Interactive = $True
+                Scopes      = $scopes
+            }
         }
 
         try {
@@ -179,18 +187,16 @@ function Update-MessageTimeStamps {
 
         # Inbox folder object
         try {
-            Write-Host -ForegroundColor Green "Attempting to get inbox folder id"
             $InboxFolder = New-Object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Inbox, $TargetMailbox)
-    
-            # Bind to the mailbox
-            Write-Host -ForegroundColor Green "Attempting to bind to inbox"
             $Inbox = [Microsoft.Exchange.WebServices.Data.Folder]::Bind($ewsClient, $InboxFolder) 
+            Write-Host -ForegroundColor Green "Obtained nbox folder id: $($Inbox.id)"
         }
         catch {
             Write-Host -ForegroundColor Red "$_`r`nNOTE: If you are not using impersonation please specify the -TargetMailbox as the account you are signing in as."
             return
         }
 
+        Write-Host -ForegroundColor Green "Attempting to bind to inbox successful!"
         if ($ChangeMessageStamps) {
             Write-Host -ForegroundColor Cyan "Building message view to modify messages. Please wait for this to complete!"
             $ItemView = New-Object Microsoft.Exchange.WebServices.Data.ItemView($maxItems)
@@ -232,8 +238,8 @@ function Update-MessageTimeStamps {
     }
 
     end {
-        Write-Host -ForegroundColor Green "Process complete! $($script:messageCounter) messaged modified!"
-        #Revoke-OauthToken
+        if ($ChangeMessageStamps) { Write-Host -ForegroundColor Green "Process complete! $($script:messageCounter) messaged modified!" }
+        else { Write-Host -ForegroundColor Green "Process complete! $($script:messageCounter) messaged read!" }
     }
 }
 
