@@ -189,7 +189,7 @@ function Update-MessageTimeStamps {
         try {
             $InboxFolder = New-Object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Inbox, $TargetMailbox)
             $Inbox = [Microsoft.Exchange.WebServices.Data.Folder]::Bind($ewsClient, $InboxFolder) 
-            Write-Host -ForegroundColor Green "Obtained nbox folder id: $($Inbox.id)"
+            Write-Host -ForegroundColor Green "Obtained inbox folder id: $($Inbox.id)"
         }
         catch {
             Write-Host -ForegroundColor Red "$_`r`nNOTE: If you are not using impersonation please specify the -TargetMailbox as the account you are signing in as."
